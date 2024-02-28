@@ -5,18 +5,18 @@ const capabilities = [{
             id: "template-evaluator",
             features: [{
                     name: "language",
-                    value: "template",
+                    value: "mongo DB",
                 },
                 {
                     name: "version",
-                    value: "template 1.0",
+                    value: "7.0.6",
                 },
                 {
                     name: "engine",
-                    value: "https://template.com/",
+                    value: "https://www.mongodb.com",
                 },
             ],
-            templateFeatures: {}
+            mongoFeatures: {}
         },]
 
 async function evalProgramming(programmingExercise, evalReq) {
@@ -83,7 +83,7 @@ const getCapability = (language) => {
     return capabilities[indexCapability]
 }
 
-const getOutputFromAnswer(program, input, capability) => {
+const getOutputFromAnswer = (program, input, capability) => {
     return new Promise((resolve, reject) => {
         var output = ''
 
