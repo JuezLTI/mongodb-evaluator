@@ -5,7 +5,7 @@ const capabilities = [{
             id: "template-evaluator",
             features: [{
                     name: "language",
-                    value: "mongo DB",
+                    value: "MongoDB",
                 },
                 {
                     name: "version",
