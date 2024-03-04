@@ -8,8 +8,6 @@ const STATEMENT_TIMEOUT = 2000
 const MAX_RESULT_ROWS = 1000
 
 var globalProgrammingExercise = {}
-const dbName = getNameAndPasswordSuffix()
-
 
 async function evalMongoDB(programmingExercise, evalReq) {
     return new Promise((resolve) => {
@@ -47,6 +45,7 @@ async function evalMongoDB(programmingExercise, evalReq) {
             let tests = []
             try {
                 let solution_id = ""
+                let compilationError = false
                 for (let solutions of programmingExercise.solutions) {
                     if (solutions.lang.toUpperCase().includes( LANGUAGE.toUpperCase() )) {
                         solution_id = solutions.id
@@ -60,7 +59,6 @@ async function evalMongoDB(programmingExercise, evalReq) {
                     let expectedOutput = await getQueryResult(
                         solution, input
                     )
-                    console.log("Obtenida la solución prevista", expectedOutput)
                     let resultStudent = await getQueryResult(
                         program, input
                     )
@@ -71,10 +69,9 @@ async function evalMongoDB(programmingExercise, evalReq) {
                         }
                         compilationError = true
                     })
-                    console.log("Obtenida la solución del estudiante", resultStudent)
                     if(!compilationError) {
-                        // let expectedRows = getRowsFromResult(expectedOutput)
-                        // let studentRows = getRowsFromResult(resultStudent)
+                        let expectedRows = getRowsFromResult(expectedOutput)
+                        let studentRows = getRowsFromResult(resultStudent)
                         if(getGrade(expectedOutput, resultStudent) == 0) {
                             summary = {
                                 "classify" : 'Wrong Answer',
@@ -100,7 +97,12 @@ async function evalMongoDB(programmingExercise, evalReq) {
     })
 }
 
-function executeMongosh(queries) {
+function getNameAndPasswordSuffix() {
+    const crypto = require('crypto')
+    return crypto.randomUUID().replace(/-/g, "")
+}
+
+function executeMongosh(queries, dbName) {
     const { spawn } = require('child_process');
 
         // Conectar a MongoDB utilizando mongosh
@@ -111,7 +113,6 @@ function executeMongosh(queries) {
             '--port', process.env.MONGO_DB_VALIDATOR_PORT,
             dbName
         ]);
-console.log(queries)
         let salidaEstandar = '';
         let salidaError = '';
 
@@ -126,11 +127,9 @@ console.log(queries)
         return new Promise((resolve, reject) => {
             mongosh.on('close', (codigoSalida) => {
                 if (codigoSalida === 0) {
-                    console.log("Éxito")
-                    resolve({ resultado: salidaEstandar });
+                    resolve(salidaEstandar );
                 } else {
-                    console.log("Error")
-                    reject({ error: salidaError });
+                    reject(salidaError);
                 }
             });
         });
@@ -138,44 +137,53 @@ console.log(queries)
 }
 
 async function getQueryResult(queries = null, inputTest) {
-    try {
-        await initTransaction()
-        await executeMongosh(queries )
-
-        return await executeMongosh(inputTest)
-
-        .finally( async () => {
-            await endTransaction()
+    const dbName = getNameAndPasswordSuffix()
+    let transactionQueries = ''
+        transactionQueries += createOnflySchema()
+        transactionQueries += "\n" + queries
+        transactionQueries += "\n" + inputTest
+        return executeMongosh(transactionQueries, dbName)
+        .finally(async () => {
+            await executeMongosh("db.dropDatabase()", dbName)
         })
-      } catch(err) {
-        console.log(err); // TypeError: failed to fetch
-        await endTransaction()
-      } finally {
-        await endTransaction()
-      }
 }
 
-async function createOnflySchema() {
-    console.log("createOnFlySchema")
-    let onFlyPromises = []
+function createOnflySchema() {
+    let onFlyQueries = '';
     for (let library of globalProgrammingExercise.libraries) {
         let onFlyQuery = globalProgrammingExercise.libraries_contents[library.id]
-        onFlyPromises.push(executeMongosh(onFlyQuery))
+        onFlyQueries += "\n" + onFlyQuery
     }
-    return Promise.all(onFlyPromises)
+    return onFlyQueries;
 }
 
-function getNameAndPasswordSuffix() {
-    const crypto = require('crypto')
-    return crypto.randomUUID().replace(/-/g, "")
-}
+function getRowsFromResult(resultString) {
+    console.log(resultString)
+    // Divide la cadena por el carácter de nueva línea
+    const lines = resultString.split('\n');
 
-async function initTransaction() {
-    return createOnflySchema()
-}
+    // Encuentra el índice de la línea que contiene el primer elemento del array (comienza con '[')
+    const startIndex = lines.findIndex(line => line.trim().startsWith('['));
 
-async function endTransaction() {
-    return executeMongosh('db.dropDatabase()')
+    // Si no se encuentra el array, devuelve un array vacío
+    if (startIndex === -1) {
+        return [];
+    }
+
+    // Une las líneas del array en una sola cadena
+    const arrayString = lines.slice(startIndex).join('\n');
+
+    // Parsea la cadena a un objeto JavaScript
+    // Nota: Esto asume que la cadena es un JSON válido
+    let resultArray;
+    try {
+        resultArray = JSON.parse(arrayString);
+    } catch (error) {
+        console.error('Error parsing JSON:', error);
+        return [];
+    }
+console.log("getRowsFromResult", resultArray)
+    return resultArray;
 }
 
 const addTest = (input, expectedOutput, obtainedOutput, lastTestError, metadata) => {
