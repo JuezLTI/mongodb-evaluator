@@ -104,15 +104,14 @@ function executeMongosh(queries) {
     const { spawn } = require('child_process');
 
         // Conectar a MongoDB utilizando mongosh
-        // TODO use custom db
         const mongosh = spawn('mongosh', [
             '--eval',
             queries,
             '--host', process.env.MONGO_DB_CONTAINER_NAME,
             '--port', process.env.MONGO_DB_VALIDATOR_PORT,
-            'test'
+            dbName
         ]);
-
+console.log(queries)
         let salidaEstandar = '';
         let salidaError = '';
 
@@ -140,83 +139,30 @@ function executeMongosh(queries) {
 
 async function getQueryResult(queries = null, inputTest) {
     try {
-        const connection = await initTransaction()
-        console.log("queries", queries)
-          // Crear un proceso hijo
-        // const mongosh_process = fork(path.join(__dirname, 'mongosh_child.js'));
+        await initTransaction()
+        await executeMongosh(queries )
 
-        // Enviar la consulta al proceso hijo
-        // resultQuerySolution = await executeMongosh(queries );
-        return executeMongosh(queries )
+        return await executeMongosh(inputTest)
 
-            /*
-            if(resultQuerySolution?.rowCount > MAX_RESULT_ROWS) {
-                return(new Error('Too long result'))
-            }
-
-            resultQueryInput = await executeInputTest(connection, inputTest)
-            console.log("resultQueryInput", resultQueryInput)
-            let resultQuery = resultQueryInput.constructor.name == 'Result' // When exists at least one SELECT into test IN.
-                ? resultQueryInput
-                : resultQuerySolution
-
-            return resultQuery
-            */
-        .catch((error) => {
-            console.log("error", error)
-            return error
+        .finally( async () => {
+            await endTransaction()
         })
       } catch(err) {
         console.log(err); // TypeError: failed to fetch
+        await endTransaction()
       } finally {
-        // Ensures that the client will close when you finish/error
-        // await endTransaction(connection)
+        await endTransaction()
       }
 }
 
-async function executeInputTest(connection, inputTest) {
-    console.log("executeInputTest")
-    let executedQueries = []
-    let resultQuery = {}
-    inputTest.trim().split(';').forEach(inputQuery => {
-        executedQueries.push(connection.eval(`function() { return ${inputQuery}; }`))
-    });
-    Promise.allSettled(executedQueries)
-    .then((resultQueries) => {
-        if(Array.isArray(resultQueries)) {
-            let selectFound = false
-            let index = resultQueries.length
-            while(!selectFound && --index >= 0) {
-                if(resultQueries[index]?.value?.command?.toUpperCase() == 'SELECT') {
-                    selectFound = true
-                    resultQuery = resultQueries[index].value
-                }
-            }
-        }
-        resolve(resultQuery) // return last SELECT execution
-    })
-}
-
-async function getConnection () {
-    const host = process.env.MONGO_DB_CONTAINER_NAME
-    const port = process.env.MONGO_DB_VALIDATOR_PORT
-    const uri = `mongodb://${host}:${port}/${dbName}`
-    const connection = new MongoClient(uri)
-    return connection
-}
-
-async function createOnflySchema(connection) {
+async function createOnflySchema() {
     console.log("createOnFlySchema")
     let onFlyPromises = []
     for (let library of globalProgrammingExercise.libraries) {
         let onFlyQuery = globalProgrammingExercise.libraries_contents[library.id]
-        onFlyPromises.push(connection.eval(`function() { return ${onFlyQuery}; }`))
+        onFlyPromises.push(executeMongosh(onFlyQuery))
     }
     return Promise.all(onFlyPromises)
-}
-
-async function dropOnflySchema (connection) {
-    return connection.command('dropDatabase')
 }
 
 function getNameAndPasswordSuffix() {
@@ -225,18 +171,11 @@ function getNameAndPasswordSuffix() {
 }
 
 async function initTransaction() {
-    console.log("initTransaction")
-    try {
-        const connection = await getConnection()
-        await createOnflySchema(connection)
-        return Promise.resolve(connection)
-    } catch(error) {
-        return Promise.reject(error)
-    }
+    return createOnflySchema()
 }
 
-async function endTransaction(connection) {
-    return dropOnflySchema(connection)
+async function endTransaction() {
+    return executeMongosh('db.dropDatabase()')
 }
 
 const addTest = (input, expectedOutput, obtainedOutput, lastTestError, metadata) => {
