@@ -85,7 +85,7 @@ async function evaluate(req) {
 
     if ("program" in evalReq.request) {
         const programmingExercise = await getProgrammingExercise(evalReq);
-        const assesment = await evaluator.evalProgramming(programmingExercise, evalReq)
+        const assesment = await evaluator.evalMongoDB(programmingExercise, evalReq)
         return assesment;
     }
 }

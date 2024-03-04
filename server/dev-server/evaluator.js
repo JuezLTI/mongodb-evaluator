@@ -1,26 +1,20 @@
 import { loadSchemaPEARL, EvaluationReport } from "evaluation-report-juezlti"
 import "babel-polyfill"
 
-const capabilities = [{
-            id: "template-evaluator",
-            features: [{
-                    name: "language",
-                    value: "MongoDB",
-                },
-                {
-                    name: "version",
-                    value: "7.0.6",
-                },
-                {
-                    name: "engine",
-                    value: "https://www.mongodb.com",
-                },
-            ],
-            mongoFeatures: {}
-        },]
+const { MongoClient } = require("mongodb");
 
-async function evalProgramming(programmingExercise, evalReq) {
+const LANGUAGE = 'MongoDB'
+const STATEMENT_TIMEOUT = 2000
+const MAX_RESULT_ROWS = 1000
+
+var globalProgrammingExercise = {}
+const dbName = getNameAndPasswordSuffix()
+
+
+async function evalMongoDB(programmingExercise, evalReq) {
+    console.log("evalMongoDB")
     return new Promise((resolve) => {
+        globalProgrammingExercise = programmingExercise
         loadSchemaPEARL().then(async () => {
 
             var evalRes = new EvaluationReport(),
@@ -31,31 +25,65 @@ async function evalProgramming(programmingExercise, evalReq) {
                 }
 
             evalRes.setRequest(evalReq.request)
-            let program = evalReq.request.program,
-                capability = getCapability(evalReq.request.language),
-                language = evalReq.request.language
+            let program = evalReq.request.program
             response.report = {}
-            response.report.capability = capability
-            response.report.programmingLanguage = language
+            response.report.capability = {
+                id: "mongo-evaluator",
+                features: [{
+                        name: "language",
+                        value: LANGUAGE,
+                    },
+                    {
+                        name: "version",
+                        value: "7.0.6",
+                    },
+                    {
+                        name: "engine",
+                        value: "https://www.mongodb.com",
+                    },
+                ]
+            }
+            response.report.programmingLanguage = LANGUAGE
             response.report.exercise = programmingExercise.id
             let tests = []
             try {
-                // place here the code your evaluator needs to get resultStudent
+                let solution_id = ""
+                for (let solutions of programmingExercise.solutions) {
+                    if (solutions.lang.toUpperCase().includes( LANGUAGE.toUpperCase() )) {
+                        solution_id = solutions.id
+                        break
+                    }
+                }
+                const solution = programmingExercise.solutions_contents[solution_id]
                 for (let metadata of programmingExercise.tests) {
                     let lastTestError = {}
                     let input = programmingExercise.tests_contents_in[metadata.id]
-                    let expectedOutput = programmingExercise.tests_contents_out[metadata.id]
-                    let resultStudent = await getOutputFromAnswer(program, input, capability)
-                        .catch(error => {
-                            lastTestError = error
-                        })
-                    if(getGrade(expectedOutput, resultStudent) == 0) {
+                    let expectedOutput = await getQueryResult(
+                        solution, input
+                    )
+                    console.log("Obtenida la solución prevista", expectedOutput)
+                    let resultStudent = await getQueryResult(
+                        program, input
+                    )
+                    .catch(error => {
                         summary = {
-                            "classify" : 'Wrong Answer',
-                            "feedback" : 'Try it again'
+                            "classify" : "Compile Time Error",
+                            "feedback" : error.message
                         }
+                        compilationError = true
+                    })
+                    console.log("Obtenida la solución del estudiante", resultStudent)
+                    if(!compilationError) {
+                        // let expectedRows = getRowsFromResult(expectedOutput)
+                        // let studentRows = getRowsFromResult(resultStudent)
+                        if(getGrade(expectedOutput, resultStudent) == 0) {
+                            summary = {
+                                "classify" : 'Wrong Answer',
+                                "feedback" : 'Try it again'
+                            }
+                        }
+                        tests.push(addTest(input, expectedRows, studentRows, metadata))
                     }
-                    tests.push(addTest(input, expectedOutput, resultStudent, lastTestError, metadata))
                 }
 
             } catch (error) {
@@ -73,27 +101,115 @@ async function evalProgramming(programmingExercise, evalReq) {
     })
 }
 
-const getCapability = (language) => {
-    let languagesArray = []
-    capabilities.forEach(element => {
-        languagesArray.push(element.features[element.features.findIndex(subelement => subelement.name == 'language')].value)
-    })
+async function getQueryResult(queries = null, inputTest) {
+    const { fork } = require('child_process');
+    const path = require('path');
+    try {
+        const connection = await initTransaction()
+        // Send a ping to confirm a successful connection
+        // await connection.db("admin").command({ ping: 1 });
+        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
+        console.log("queries", queries)
+          // Crear un proceso hijo
+        const mongosh_process = fork(path.join(__dirname, 'mongosh_child.js'));
 
-    let indexCapability = languagesArray.findIndex(languageElement => languageElement.toLowerCase() == language.toLowerCase())
-    return capabilities[indexCapability]
+        // Enviar la consulta al proceso hijo
+        mongosh_process.send({ consulta: queries });
+
+        // Manejar la respuesta del proceso hijo
+        mongosh_process.on('message', async (resultQuerySolution) => {
+            console.log("resultQuerySolution", resultQuerySolution)
+            return resultQuerySolution
+            /*
+            if(resultQuerySolution?.rowCount > MAX_RESULT_ROWS) {
+                return(new Error('Too long result'))
+            }
+
+            resultQueryInput = await executeInputTest(connection, inputTest)
+            console.log("resultQueryInput", resultQueryInput)
+            let resultQuery = resultQueryInput.constructor.name == 'Result' // When exists at least one SELECT into test IN.
+                ? resultQueryInput
+                : resultQuerySolution
+
+            return resultQuery
+            */
+        });
+
+        // Manejar errores en el proceso hijo
+        mongosh_process.on('error', (error) => {
+            console.log({ error: error.message });
+        });
+      } catch(err) {
+        console.log(err); // TypeError: failed to fetch
+      } finally {
+        // Ensures that the client will close when you finish/error
+        await endTransaction(connection)
+      }
 }
 
-const getOutputFromAnswer = (program, input, capability) => {
-    return new Promise((resolve, reject) => {
-        var output = ''
-
-        // Handling return data
-        if(false) {
-            reject(new Error())
-        }if (true) {
-            resolve(output)
+async function executeInputTest(connection, inputTest) {
+    console.log("executeInputTest")
+    let executedQueries = []
+    let resultQuery = {}
+    inputTest.trim().split(';').forEach(inputQuery => {
+        executedQueries.push(connection.eval(`function() { return ${inputQuery}; }`))
+    });
+    Promise.allSettled(executedQueries)
+    .then((resultQueries) => {
+        if(Array.isArray(resultQueries)) {
+            let selectFound = false
+            let index = resultQueries.length
+            while(!selectFound && --index >= 0) {
+                if(resultQueries[index]?.value?.command?.toUpperCase() == 'SELECT') {
+                    selectFound = true
+                    resultQuery = resultQueries[index].value
+                }
+            }
         }
+        resolve(resultQuery) // return last SELECT execution
     })
+}
+
+async function getConnection () {
+    const host = process.env.MONGO_DB_CONTAINER_NAME
+    const port = process.env.MONGO_DB_VALIDATOR_PORT
+    const uri = `mongodb://${host}:${port}/${dbName}`
+    const connection = new MongoClient(uri)
+    return connection
+}
+
+async function createOnflySchema(connection) {
+    console.log("createOnFlySchema")
+    let onFlyPromises = []
+    for (let library of globalProgrammingExercise.libraries) {
+        let onFlyQuery = globalProgrammingExercise.libraries_contents[library.id]
+        onFlyPromises.push(connection.eval(`function() { return ${onFlyQuery}; }`))
+    }
+    return Promise.all(onFlyPromises)
+}
+
+async function dropOnflySchema (connection) {
+    return connection.command('dropDatabase')
+}
+
+function getNameAndPasswordSuffix() {
+    const crypto = require('crypto')
+    return crypto.randomUUID().replace(/-/g, "")
+}
+
+async function initTransaction() {
+    console.log("initTransaction")
+    try {
+        const connection = await getConnection()
+        await createOnflySchema(connection)
+        return Promise.resolve(connection)
+    } catch(error) {
+        return Promise.reject(error)
+    }
+}
+
+async function endTransaction(connection) {
+    return dropOnflySchema(connection)
 }
 
 const addTest = (input, expectedOutput, obtainedOutput, lastTestError, metadata) => {
@@ -161,6 +277,5 @@ const visibilizeWhiteChars = (originalString) => {
 }
 
 module.exports = {
-    evalProgramming,
-    capabilities
+    evalMongoDB
 }
