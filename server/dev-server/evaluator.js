@@ -12,7 +12,6 @@ const dbName = getNameAndPasswordSuffix()
 
 
 async function evalMongoDB(programmingExercise, evalReq) {
-    console.log("evalMongoDB")
     return new Promise((resolve) => {
         globalProgrammingExercise = programmingExercise
         loadSchemaPEARL().then(async () => {
@@ -101,25 +100,55 @@ async function evalMongoDB(programmingExercise, evalReq) {
     })
 }
 
+function executeMongosh(queries) {
+    const { spawn } = require('child_process');
+
+        // Conectar a MongoDB utilizando mongosh
+        // TODO use custom db
+        const mongosh = spawn('mongosh', [
+            '--eval',
+            queries,
+            '--host', process.env.MONGO_DB_CONTAINER_NAME,
+            '--port', process.env.MONGO_DB_VALIDATOR_PORT,
+            'test'
+        ]);
+
+        let salidaEstandar = '';
+        let salidaError = '';
+
+        mongosh.stdout.on('data', (data) => {
+            salidaEstandar += data;
+        });
+    
+        mongosh.stderr.on('data', (data) => {
+            salidaError += data;
+        });
+    
+        return new Promise((resolve, reject) => {
+            mongosh.on('close', (codigoSalida) => {
+                if (codigoSalida === 0) {
+                    console.log("Éxito")
+                    resolve({ resultado: salidaEstandar });
+                } else {
+                    console.log("Error")
+                    reject({ error: salidaError });
+                }
+            });
+        });
+
+}
+
 async function getQueryResult(queries = null, inputTest) {
-    const { fork } = require('child_process');
-    const path = require('path');
     try {
         const connection = await initTransaction()
-        // Send a ping to confirm a successful connection
-        // await connection.db("admin").command({ ping: 1 });
-        // console.log("Pinged your deployment. You successfully connected to MongoDB!");
         console.log("queries", queries)
           // Crear un proceso hijo
-        const mongosh_process = fork(path.join(__dirname, 'mongosh_child.js'));
+        // const mongosh_process = fork(path.join(__dirname, 'mongosh_child.js'));
 
         // Enviar la consulta al proceso hijo
-        mongosh_process.send({ consulta: queries });
+        // resultQuerySolution = await executeMongosh(queries );
+        return executeMongosh(queries )
 
-        // Manejar la respuesta del proceso hijo
-        mongosh_process.on('message', async (resultQuerySolution) => {
-            console.log("resultQuerySolution", resultQuerySolution)
-            return resultQuerySolution
             /*
             if(resultQuerySolution?.rowCount > MAX_RESULT_ROWS) {
                 return(new Error('Too long result'))
@@ -133,17 +162,15 @@ async function getQueryResult(queries = null, inputTest) {
 
             return resultQuery
             */
-        });
-
-        // Manejar errores en el proceso hijo
-        mongosh_process.on('error', (error) => {
-            console.log({ error: error.message });
-        });
+        .catch((error) => {
+            console.log("error", error)
+            return error
+        })
       } catch(err) {
         console.log(err); // TypeError: failed to fetch
       } finally {
         // Ensures that the client will close when you finish/error
-        await endTransaction(connection)
+        // await endTransaction(connection)
       }
 }
 
