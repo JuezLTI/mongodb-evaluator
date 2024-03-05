@@ -52,7 +52,6 @@ async function evalMongoDB(programmingExercise, evalReq) {
                 }
                 const solution = programmingExercise.solutions_contents[solution_id]
                 for (let metadata of programmingExercise.tests) {
-                    let lastTestError = {}
                     let input = programmingExercise.tests_contents_in[metadata.id]
                     let expectedOutput = await getQueryResult(
                         solution, input
@@ -158,35 +157,39 @@ function createOnflySchema() {
 }
 
 function getJSONFromResult(resultString) {
-    const { EJSON } = require('bson');
 
     // Parsea la cadena a un objeto JavaScript
-    const cleanedString = resultString.replace(/(\w+):/g, '"$1":').replace(/ObjectId\('([^']*)'\)/g, '"$1"').replace(/'/g, '"');
+    const resultArray = resultString
+        .replace(/(\w+):/g, '"$1":')
+        .replace(/ObjectId\('([^']*)'\)/g, '"$1"')
+        .replace(/'/g, '"');
 
-    let resultArray;
-    try {
-        resultArray = EJSON.parse(cleanedString, { relaxed: true })
-    } catch (error) {
-        console.error('Error parsing JSON:', error);
-        return [];
-    }
     return resultArray;
 }
 
-const addTest = (input, expectedOutput, obtainedOutput, lastTestError, metadata) => {
+function jsonParse(string) {
+    const { EJSON } = require('bson');
+    return EJSON.parse(string
+        .replace(/\n/g, '')
+        .replace(/\s/g, '')
+    );
+
+}
+
+const addTest = (input, expectedOutput, obtainedOutput, metadata) => {
     const Diff = require('diff')
     obtainedOutput = obtainedOutput ? obtainedOutput : ''
-    const outputDifferences = JSON.stringify(Diff.diffTrimmedLines(expectedOutput, obtainedOutput));
+    const outputDifferences = JSON.stringify(Diff.diffJson(jsonParse(expectedOutput), jsonParse(obtainedOutput)));
     return {
         'input': input,
-        'expectedOutput': visibilizeWhiteChars(expectedOutput),
-        'obtainedOutput': visibilizeWhiteChars(obtainedOutput),
+        'expectedOutput': expectedOutput, // visibilizeWhiteChars(expectedOutput),
+        'obtainedOutput': obtainedOutput, // visibilizeWhiteChars(obtainedOutput),
         'outputDifferences': outputDifferences ? outputDifferences : '',
-        'classify': getClassify(expectedOutput, obtainedOutput, lastTestError),
+        'classify': getClassify(expectedOutput, obtainedOutput),
         'mark': getGrade(expectedOutput, obtainedOutput),
         'visible': metadata.visible,
         'hint': metadata.feedback,
-        'feedback': getFeedback(expectedOutput, obtainedOutput, lastTestError),
+        'feedback': getFeedback(expectedOutput, obtainedOutput),
         'environmentValues': []
     }
 }
@@ -195,31 +198,19 @@ const getGrade = (expectedOutput, obtainedOutput) => {
     return expectedOutput == obtainedOutput ? 100 : 0
 }
 
-const getFeedback = (expectedOutput, obtainedOutput, lastTestError) => {
+const getFeedback = (expectedOutput, obtainedOutput) => {
     let feedback = 'Right Answer.'
-    // Feedack will be fill by feedback-manager
-    if(lastTestError) {
-        feedback = lastTestError.toString()
-    } else if(getGrade(expectedOutput, obtainedOutput) < 1) {
+    if(getGrade(expectedOutput, obtainedOutput) < 1) {
         feedback = 'Wrong Answer.'
     }
     return feedback
 }
 
-const getClassify = (expectedOutput, obtainedOutput, lastTestError) => {
+const getClassify = (expectedOutput, obtainedOutput) => {
     let classify = 'Accepted'
 
     if(getGrade(expectedOutput, obtainedOutput) < 1)
         classify = 'Wrong Answer'
-    if(lastTestError?.code) {
-        switch(lastTestError.code) {
-            case 143:
-                classify = 'Time Limit Exceeded'
-                break
-            default:
-                classify = 'Runtime Error'
-        }
-    }
     return classify
 }
 
