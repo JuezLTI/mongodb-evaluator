@@ -1,8 +1,6 @@
 import { loadSchemaPEARL, EvaluationReport } from "evaluation-report-juezlti"
 import "babel-polyfill"
 
-const { MongoClient } = require("mongodb");
-
 const LANGUAGE = 'MongoDB'
 const STATEMENT_TIMEOUT = 2000
 const MAX_RESULT_ROWS = 1000
@@ -70,8 +68,8 @@ async function evalMongoDB(programmingExercise, evalReq) {
                         compilationError = true
                     })
                     if(!compilationError) {
-                        let expectedRows = getRowsFromResult(expectedOutput)
-                        let studentRows = getRowsFromResult(resultStudent)
+                        let expectedRows = getJSONFromResult(expectedOutput)
+                        let studentRows = getJSONFromResult(resultStudent)
                         if(getGrade(expectedOutput, resultStudent) == 0) {
                             summary = {
                                 "classify" : 'Wrong Answer',
@@ -117,7 +115,9 @@ function executeMongosh(queries, dbName) {
         let salidaError = '';
 
         mongosh.stdout.on('data', (data) => {
-            salidaEstandar += data;
+            //asociar data a salidaEstandar si la longitud de data es > 0
+            if(data.length > 0)
+                salidaEstandar = data.toString();
         });
     
         mongosh.stderr.on('data', (data) => {
@@ -127,7 +127,7 @@ function executeMongosh(queries, dbName) {
         return new Promise((resolve, reject) => {
             mongosh.on('close', (codigoSalida) => {
                 if (codigoSalida === 0) {
-                    resolve(salidaEstandar );
+                    resolve(salidaEstandar);
                 } else {
                     reject(salidaError);
                 }
@@ -157,32 +157,19 @@ function createOnflySchema() {
     return onFlyQueries;
 }
 
-function getRowsFromResult(resultString) {
-    console.log(resultString)
-    // Divide la cadena por el carácter de nueva línea
-    const lines = resultString.split('\n');
-
-    // Encuentra el índice de la línea que contiene el primer elemento del array (comienza con '[')
-    const startIndex = lines.findIndex(line => line.trim().startsWith('['));
-
-    // Si no se encuentra el array, devuelve un array vacío
-    if (startIndex === -1) {
-        return [];
-    }
-
-    // Une las líneas del array en una sola cadena
-    const arrayString = lines.slice(startIndex).join('\n');
+function getJSONFromResult(resultString) {
+    const { EJSON } = require('bson');
 
     // Parsea la cadena a un objeto JavaScript
-    // Nota: Esto asume que la cadena es un JSON válido
+    const cleanedString = resultString.replace(/(\w+):/g, '"$1":').replace(/ObjectId\('([^']*)'\)/g, '"$1"').replace(/'/g, '"');
+
     let resultArray;
     try {
-        resultArray = JSON.parse(arrayString);
+        resultArray = EJSON.parse(cleanedString, { relaxed: true })
     } catch (error) {
         console.error('Error parsing JSON:', error);
         return [];
     }
-console.log("getRowsFromResult", resultArray)
     return resultArray;
 }
 
