@@ -1,5 +1,6 @@
 import { loadSchemaPEARL, EvaluationReport } from "evaluation-report-juezlti"
 import "babel-polyfill"
+import { Console } from "console"
 
 const LANGUAGE = 'MongoDB'
 const STATEMENT_TIMEOUT = 2000
@@ -140,7 +141,9 @@ async function getQueryResult(queries = null, inputTest) {
     let transactionQueries = ''
         transactionQueries += createOnflySchema()
         transactionQueries += "\n" + queries
-        transactionQueries += "\n" + inputTest
+        if(containsMongoDBStatement(inputTest)) {
+            transactionQueries += "\n" + inputTest
+        }
         return executeMongosh(transactionQueries, dbName)
         .finally(async () => {
             await executeMongosh("db.dropDatabase()", dbName)
@@ -154,6 +157,12 @@ function createOnflySchema() {
         onFlyQueries += "\n" + onFlyQuery
     }
     return onFlyQueries;
+}
+
+function containsMongoDBStatement(inputTest) {
+    // Comprueba si inputTest contiene db. seguido de cualquier palabra.
+    const mongoDBPattern = /db\.\w+/;
+    return mongoDBPattern.test(inputTest);
 }
 
 function getJSONFromResult(resultString) {
