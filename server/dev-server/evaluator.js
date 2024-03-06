@@ -105,6 +105,7 @@ function executeMongosh(queries, dbName) {
 
         // Conectar a MongoDB utilizando mongosh
         const mongosh = spawn('mongosh', [
+            '--quiet',
             '--eval',
             queries,
             '--host', process.env.MONGO_DB_CONTAINER_NAME,
@@ -141,9 +142,7 @@ async function getQueryResult(queries = null, inputTest) {
     let transactionQueries = ''
         transactionQueries += createOnflySchema()
         transactionQueries += "\n" + queries
-        if(containsMongoDBStatement(inputTest)) {
-            transactionQueries += "\n" + inputTest
-        }
+        transactionQueries += "\n" + inputTest
         return executeMongosh(transactionQueries, dbName)
         .finally(async () => {
             await executeMongosh("db.dropDatabase()", dbName)
@@ -157,12 +156,6 @@ function createOnflySchema() {
         onFlyQueries += "\n" + onFlyQuery
     }
     return onFlyQueries;
-}
-
-function containsMongoDBStatement(inputTest) {
-    // Comprueba si inputTest contiene db. seguido de cualquier palabra.
-    const mongoDBPattern = /db\.\w+/;
-    return mongoDBPattern.test(inputTest);
 }
 
 function getJSONFromResult(resultString) {
