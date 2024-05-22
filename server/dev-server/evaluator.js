@@ -46,7 +46,10 @@ async function evalMongoDB(programmingExercise, evalReq) {
                 let solution_id = ""
                 let compilationError = false
                 for (let solutions of programmingExercise.solutions) {
-                    if (solutions.lang.toUpperCase().includes( LANGUAGE.toUpperCase() )) {
+                    if (solutions.lang.toUpperCase().includes( LANGUAGE.toUpperCase())
+                     ||
+                        solutions.lang.toUpperCase().includes("JAVASCRIPT")
+                    ) {
                         solution_id = solutions.id
                         break
                     }
@@ -128,8 +131,10 @@ function executeMongosh(queries, dbName) {
         return new Promise((resolve, reject) => {
             mongosh.on('close', (codigoSalida) => {
                 if (codigoSalida === 0) {
+                    console.log('Salida sin error', salidaEstandar);
                     resolve(salidaEstandar);
                 } else {
+                    console.log('Salida con error', salidaError);
                     reject(salidaError);
                 }
             });
