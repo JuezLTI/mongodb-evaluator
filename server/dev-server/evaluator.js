@@ -164,8 +164,8 @@ function createOnflySchema() {
 }
 
 function getJSONFromResult(resultString) {
-
     // Parsea la cadena a un objeto JavaScript
+    resultString = resultString.trim().length > 0 ? resultString : '[]'
     const resultArray = resultString
         .replace(/(\w+):/g, '"$1":')
         .replace(/ObjectId\('([^']*)'\)/g, '"$1"')
