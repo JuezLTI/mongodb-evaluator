@@ -43,6 +43,9 @@ async function evalMongoDB(programmingExercise, evalReq) {
             response.report.exercise = programmingExercise.id
             let tests = []
             try {
+                if(!fulfilPreConditions(program, programmingExercise.keywords)) throw (
+                    new Error("Your solution doesn't meet the requirements.")
+                )
                 let solution_id = ""
                 let compilationError = false
                 for (let solutions of programmingExercise.solutions) {
@@ -96,6 +99,45 @@ async function evalMongoDB(programmingExercise, evalReq) {
             }
         })
     })
+}
+
+const sanitizeKeywords = (keywords) => {
+    let sanitizedKeywords = [];
+    keywords.forEach(keyword => {
+        if (keyword.includes(',')) {
+            keyword.split(',').map(k => k.trim()).forEach(k => sanitizedKeywords.push(k));
+        } else {
+            sanitizedKeywords.push(keyword.trim());
+        }
+    });
+    return sanitizedKeywords;
+}
+
+const fulfilPreConditions = (program, keywords) => {
+    let fulfilled = true
+    keywords = sanitizeKeywords(keywords)
+
+    let compulsoryKeyword = keywords.find(keyword => keyword.startsWith('compulsory'));
+    if (compulsoryKeyword) {
+        let compulsoryKeywords = compulsoryKeyword.match(/\[(.*?)\]/)[1].split(';');
+        compulsoryKeywords = compulsoryKeywords.map(keyword => keyword.match(/"(.*?)"/)[1]);
+        compulsoryKeywords.forEach(keyword => {
+            if(!program.includes(keyword)) {
+                fulfilled = false
+            }
+        })
+    }
+    let forbiddenKeyword = keywords.find(keyword => keyword.startsWith('forbidden'));
+    if (forbiddenKeyword) {
+        let forbiddenKeywords = forbiddenKeyword.match(/\[(.*?)\]/)[1].split(';');
+        forbiddenKeywords = forbiddenKeywords.map(keyword => keyword.match(/"(.*?)"/)[1]);
+        forbiddenKeywords.forEach(keyword => {
+            if(program.includes(keyword)) {
+                fulfilled = false
+            }
+        })
+    }
+    return fulfilled
 }
 
 function getNameAndPasswordSuffix() {
