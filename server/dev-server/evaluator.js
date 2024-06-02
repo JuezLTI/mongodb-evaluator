@@ -117,17 +117,17 @@ const sanitizeKeywords = (keywords) => {
 const fulfilPreConditions = (program, keywords) => {
     let fulfilled = true
 
-    let compulsoryKeyword = keywords.find(keyword => keyword.startsWith('compulsory'));
-    if (compulsoryKeyword) {
-        let compulsoryKeywords = compulsoryKeyword.match(/\[(.*?)\]/)[1].split(';');
-        compulsoryKeywords = compulsoryKeywords.map(keyword => keyword.match(/"(.*?)"/)[1]);
-        compulsoryKeywords.forEach(keyword => {
+    let mandatoryKeyword = keywords.find(keyword => keyword.toLowerCase().startsWith('mandatory'));
+    if (mandatoryKeyword) {
+        let mandatoryKeywords = mandatoryKeyword.match(/\[(.*?)\]/)[1].split(';');
+        mandatoryKeywords = mandatoryKeywords.map(keyword => keyword.match(/"(.*?)"/)[1]);
+        mandatoryKeywords.forEach(keyword => {
             if(!program.includes(keyword)) {
                 fulfilled = false
             }
         })
     }
-    let forbiddenKeyword = keywords.find(keyword => keyword.startsWith('forbidden'));
+    let forbiddenKeyword = keywords.find(keyword => keyword.toLowerCase().startsWith('forbidden'));
     if (forbiddenKeyword) {
         let forbiddenKeywords = forbiddenKeyword.match(/\[(.*?)\]/)[1].split(';');
         forbiddenKeywords = forbiddenKeywords.map(keyword => keyword.match(/"(.*?)"/)[1]);
