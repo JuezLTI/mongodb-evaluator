@@ -116,23 +116,24 @@ const sanitizeKeywords = (keywords) => {
 
 const fulfilPreConditions = (program, keywords) => {
     let fulfilled = true
+    let programLowerCase = program.toLowerCase()
 
     let mandatoryKeyword = keywords.find(keyword => keyword.toLowerCase().startsWith('mandatory'));
     if (mandatoryKeyword) {
-        let mandatoryKeywords = mandatoryKeyword.match(/\[(.*?)\]/)[1].split(';');
+        let mandatoryKeywords = mandatoryKeyword.toLowerCase().match(/\[(.*?)\]/)[1].split(';')
         mandatoryKeywords = mandatoryKeywords.map(keyword => keyword.match(/"(.*?)"/)[1]);
         mandatoryKeywords.forEach(keyword => {
-            if(!program.includes(keyword)) {
+            if(!programLowerCase.includes(keyword)) {
                 fulfilled = false
             }
         })
     }
     let forbiddenKeyword = keywords.find(keyword => keyword.toLowerCase().startsWith('forbidden'));
     if (forbiddenKeyword) {
-        let forbiddenKeywords = forbiddenKeyword.match(/\[(.*?)\]/)[1].split(';');
+        let forbiddenKeywords = forbiddenKeyword.toLowerCase().match(/\[(.*?)\]/)[1].split(';')
         forbiddenKeywords = forbiddenKeywords.map(keyword => keyword.match(/"(.*?)"/)[1]);
         forbiddenKeywords.forEach(keyword => {
-            if(program.includes(keyword)) {
+            if(programLowerCase.includes(keyword)) {
                 fulfilled = false
             }
         })
